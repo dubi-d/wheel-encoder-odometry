@@ -1,0 +1,5 @@
+<launch>
+
+	<node pkg="wheel-encoder-odometry" type="wheel_encoder_odometry_node.py" name="wheel_encoder_odometry_node" output="screen"/>
+
+</launch>

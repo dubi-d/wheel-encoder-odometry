@@ -1,0 +1,11 @@
+<package>
+  <name>wheel-encoder-odometry</name>
+  <version>0.1.0</version>
+  <description>
+  For unit E-3 of the ETHZ-AMoD20 class 
+  </description>
+  <maintainer email="david.dubach96@gmail.com">David Dubach</maintainer>
+  <license>None</license>
+
+  <buildtool_depend>catkin</buildtool_depend>
+</package>
