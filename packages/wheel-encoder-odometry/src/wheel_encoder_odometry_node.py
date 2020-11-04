@@ -26,6 +26,7 @@ class WheelEncoderOdometryNode(DTROS):
 
         # init variables
         self._encoder_resolution = None
+        self._is_initialized = {"left": False, "right": False}
         self._travelled_distance = {"left": 0, "right": 0} # [m]
         self._initial_ticks = {"left": 0, "right": 0}  # ticks when this node was launched
         self._current_ticks = {"left": 0, "right": 0}
@@ -56,7 +57,7 @@ class WheelEncoderOdometryNode(DTROS):
         """
         Compute travelled distance on left encoder tick callback.
         """
-        if self._encoder_resolution is None:
+        if not self._is_initialized["left"]:
             # initialize variables when the first message arrives
             self._encoder_resolution = msg.resolution
             self._initial_ticks["left"] = msg.data
@@ -69,7 +70,7 @@ class WheelEncoderOdometryNode(DTROS):
         """
         Compute travelled distance on right encoder tick callback.
         """
-        if self._encoder_resolution is None:
+        if not self._is_initialized["right"]:
             # initialize variables when the first message arrives
             self._encoder_resolution = msg.resolution
             self._initial_ticks["right"] = msg.data
@@ -83,14 +84,14 @@ class WheelEncoderOdometryNode(DTROS):
                                             - self._initial_ticks[side]) / self._encoder_resolution
 
 
-    def calculate_wheel_radius(self):
+    def calculate_wheel_radius(self, empty):
         """
-        Assuming the robot moved exactly 1.5 meters since this node was started, compute the wheel radius
+        Assuming the robot moved exactly 2 meters since this node was started, compute the wheel radius
         based on the encoder ticks. The robot must moved via joystick or manually forward, never manually backwards.
 
         :return: estimated wheel radius
         """
-        real_distance = 1.5  # [m]
+        real_distance = 2  # [m]
         r_left = self._encoder_resolution * real_distance / (2 * np.pi * (self._current_ticks["left"] - self._initial_ticks["left"]))
         r_right = self._encoder_resolution * real_distance / (2 * np.pi * (self._current_ticks["right"] - self._initial_ticks["right"]))
         return 0.5 * (r_left + r_right)
