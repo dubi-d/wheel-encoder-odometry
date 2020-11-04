@@ -6,7 +6,7 @@ from duckietown.dtros import DTROS, NodeType, TopicType, DTParam, ParamType
 from duckietown_msgs.msg import Twist2DStamped, WheelEncoderStamped, WheelsCmdStamped
 from std_msgs.msg import Header, Float32
 
-class OdometryNode(DTROS):
+class WheelEncoderOdometryNode(DTROS):
 
     def __init__(self, node_name):
         """Wheel Encoder Node
@@ -14,8 +14,9 @@ class OdometryNode(DTROS):
         """
 
         # Initialize the DTROS parent class
-        super(EncoderNode, self).__init__(node_name=node_name, node_type=NodeType.PERCEPTION)
+        super(WheelEncoderOdometryNode, self).__init__(node_name=node_name, node_type=NodeType.PERCEPTION)
         self.veh_name = rospy.get_namespace().strip("/")
+        self.log(f"Vehicle name: {self.veh_name}")
 
         ## Get static parameters
         #self._radius = rospy.get_param(f'/{self.veh_name}/kinematics_node/radius', 100)
@@ -40,7 +41,7 @@ class OdometryNode(DTROS):
         """
 
 if __name__ == '__main__':
-    node = OdometryNode(node_name='my_odometry_node')
+    node = WheelEncoderOdometryNode(node_name='wheel_encoder_odometry_node')
     # Keep it spinning to keep the node alive
     rospy.spin()
-    rospy.loginfo("wheel_encoder_node is up and running...")
+    rospy.loginfo("wheel_encoder_odometry_node is up and running...")
