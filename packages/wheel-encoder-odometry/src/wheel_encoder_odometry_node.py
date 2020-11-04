@@ -1,16 +1,19 @@
 #!/usr/bin/env python3
 import numpy as np
-import os
 import rospy
+
 from duckietown.dtros import DTROS, NodeType, TopicType, DTParam, ParamType
-from duckietown_msgs.msg import Twist2DStamped, WheelEncoderStamped, WheelsCmdStamped
+from duckietown_msgs.msg import WheelEncoderStamped
 from std_msgs.msg import Header, Float32
+from std_srvs.srv import Empty
 
 class WheelEncoderOdometryNode(DTROS):
 
     def __init__(self, node_name):
-        """Wheel Encoder Node
-        This implements basic functionality with the wheel encoders.
+        """
+        Wheel Encoder Node
+        This implements basic functionality with the wheel encoders. It works assuming that the robot is controlled
+        via virtual joystick, or moved forward by hand. It will produce wrong results if moved backwards by hand.
         """
 
         # Initialize the DTROS parent class
@@ -24,21 +27,21 @@ class WheelEncoderOdometryNode(DTROS):
         # init variables
         self._encoder_resolution = None
         self._travelled_distance = {"left": 0, "right": 0} # [m]
-        self._previous_ticks = {"left": 0, "right": 0}
-        self._executed_commands = {"left": 0, "right": 0}
-        self._original_ticks = {"left": 0, "right": 0}  # ticks when this node was launched (used for radius calculation)
+        self._initial_ticks = {"left": 0, "right": 0}  # ticks when this node was launched
+        self._current_ticks = {"left": 0, "right": 0}
 
         # Subscribing to the wheel encoders
-        self.sub_encoder_ticks_left = rospy.Subscriber(f"/{self.veh_name}/left_wheel_encoder_node/tick", WheelEncoderStamped,
+        self.sub_encoder_ticks_left = rospy.Subscriber("left_wheel_encoder_node/tick", WheelEncoderStamped,
                                                        self.cb_encoder_left)
         self.sub_encoder_ticks_right = rospy.Subscriber("right_wheel_encoder_node/tick", WheelEncoderStamped,
                                                         self.cb_encoder_right)
-        self.sub_executed_commands = rospy.Subscriber("wheels_driver_node/wheels_cmd_executed", WheelsCmdStamped,
-                                                      self.cb_executed_commands)
 
         # Publishers
-        self.pub_travelled_distance_left = rospy.Publisher("~travelled_distance_left", Float32)
-        self.pub_travelled_distance_right = rospy.Publisher("~travelled_distance_right", Float32)
+        self.pub_travelled_distance_left = rospy.Publisher("~travelled_distance_left", Float32, queue_size=1)
+        self.pub_travelled_distance_right = rospy.Publisher("~travelled_distance_right", Float32, queue_size=1)
+
+        # Service to calculate wheel radius
+        self.srv_calculate_wheel_radius = rospy.Service("~calculate_wheel_radius", Empty, self.calculate_wheel_radius)
 
         self.log("Initialized")
 
@@ -50,55 +53,46 @@ class WheelEncoderOdometryNode(DTROS):
             r.sleep()
 
     def cb_encoder_left(self, msg):
-        """ ToDo
         """
-        self.log(msg)
+        Compute travelled distance on left encoder tick callback.
+        """
         if self._encoder_resolution is None:
             # initialize variables when the first message arrives
             self._encoder_resolution = msg.resolution
-            self._previous_ticks["left"] = msg.data
-            self._original_ticks["left"] = msg.data
-            return
+            self._initial_ticks["left"] = msg.data
+            self.log(f'Initial ticks left side: {self._initial_ticks["left"]}')
 
-        self.update_travelled_distance(msg.data, "left")
+        self._current_ticks["left"] = msg.data
+        self.update_travelled_distance("left")
 
     def cb_encoder_right(self, msg):
-        """ ToDo
         """
-        self.log(msg)
-        print(msg)
+        Compute travelled distance on right encoder tick callback.
+        """
         if self._encoder_resolution is None:
             # initialize variables when the first message arrives
             self._encoder_resolution = msg.resolution
-            self._previous_ticks["right"] = msg.data
-            self._original_ticks["right"] = msg.data
-            return
+            self._initial_ticks["right"] = msg.data
+            self.log(f'Initial ticks right side: {self._initial_ticks["right"]}')
 
-        self.update_travelled_distance(msg.data, "right")
+        self._current_ticks["right"] = msg.data
+        self.update_travelled_distance("right")
 
-    def cb_executed_commands(self, msg):
-        """ ToDo
+    def update_travelled_distance(self, side):
+        self._travelled_distance[side] = 2 * np.pi * self._radius * (self._current_ticks[side]
+                                            - self._initial_ticks[side]) / self._encoder_resolution
+
+
+    def calculate_wheel_radius(self):
         """
-        self._executed_commands = {"left": msg.vel_left, "right": msg.vel_right}
+        Assuming the robot moved exactly 1.5 meters since this node was started, compute the wheel radius
+        based on the encoder ticks. The robot must moved via joystick or manually forward, never manually backwards.
 
-    def update_travelled_distance(self, ticks, side):
-        self.log("Called update_travelled_distance")
-        delta_distance = 2 * np.pi * self._radius * (ticks - self._previous_ticks[side]) / self._encoder_resolution
-        if self._executed_commands[side] >= 0:
-            self._travelled_distance[side] += delta_distance
-        elif self._executed_commands[side] < 0:
-            self._travelled_distance[side] -= delta_distance
-
-    def compute_wheel_radius(self, real_distance):
-        """
-        Assuming the robot moved exactly real_distance meters since this node was started, compute the wheel radius
-        based on the encoder ticks.
-
-        :param real_distance: Distance the duckiebot has travelled since launching this node (moved via joystick or manually forward)
         :return: estimated wheel radius
         """
-        r_left = self._encoder_resolution * real_distance / (2 * np.pi * (self._previous_ticks["left"] - self._original_ticks["left"]))
-        r_right = self._encoder_resolution * real_distance / (2 * np.pi * (self._previous_ticks["right"] - self._original_ticks["right"]))
+        real_distance = 1.5  # [m]
+        r_left = self._encoder_resolution * real_distance / (2 * np.pi * (self._current_ticks["left"] - self._initial_ticks["left"]))
+        r_right = self._encoder_resolution * real_distance / (2 * np.pi * (self._current_ticks["right"] - self._initial_ticks["right"]))
         return 0.5 * (r_left + r_right)
 
 if __name__ == '__main__':
