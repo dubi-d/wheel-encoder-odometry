@@ -5,7 +5,7 @@ import rospy
 from duckietown.dtros import DTROS, NodeType, TopicType, DTParam, ParamType
 from duckietown_msgs.msg import WheelEncoderStamped
 from std_msgs.msg import Header, Float32
-from std_srvs.srv import Empty
+from std_srvs.srv import Trigger, TriggerResponse
 
 class WheelEncoderOdometryNode(DTROS):
 
@@ -42,12 +42,12 @@ class WheelEncoderOdometryNode(DTROS):
         self.pub_travelled_distance_right = rospy.Publisher("~travelled_distance_right", Float32, queue_size=1)
 
         # Service to calculate wheel radius
-        self.srv_calculate_wheel_radius = rospy.Service("~calculate_wheel_radius", Empty, self.calculate_wheel_radius)
+        self.srv_calculate_wheel_radius = rospy.Service("~calculate_wheel_radius", Trigger, self.calculate_wheel_radius)
 
         self.log("Initialized")
 
     def run_publishers(self):
-        r = rospy.Rate(1)  # 1Hz
+        r = rospy.Rate(2)  # 2Hz
         while not rospy.is_shutdown():
             self.pub_travelled_distance_left.publish(self._travelled_distance["left"])
             self.pub_travelled_distance_right.publish(self._travelled_distance["right"])
@@ -57,34 +57,27 @@ class WheelEncoderOdometryNode(DTROS):
         """
         Compute travelled distance on left encoder tick callback.
         """
-        if not self._is_initialized["left"]:
-            # initialize variables when the first message arrives
-            self._encoder_resolution = msg.resolution
-            self._initial_ticks["left"] = msg.data
-            self.log(f'Initial ticks left side: {self._initial_ticks["left"]}')
-
-        self._current_ticks["left"] = msg.data
-        self.update_travelled_distance("left")
+        self.update_travelled_distance(msg, "left")
 
     def cb_encoder_right(self, msg):
         """
         Compute travelled distance on right encoder tick callback.
         """
-        if not self._is_initialized["right"]:
+        self.update_travelled_distance(msg, "right")
+
+    def update_travelled_distance(self, msg, side):
+        if not self._is_initialized[side]:
             # initialize variables when the first message arrives
             self._encoder_resolution = msg.resolution
-            self._initial_ticks["right"] = msg.data
-            self.log(f'Initial ticks right side: {self._initial_ticks["right"]}')
+            self._initial_ticks[side] = msg.data
+            self._is_initialized[side] = True
+            self.log(f'Initial ticks {side} side: {self._initial_ticks[side]}')
 
-        self._current_ticks["right"] = msg.data
-        self.update_travelled_distance("right")
-
-    def update_travelled_distance(self, side):
+        self._current_ticks[side] = msg.data  # required for radius calculation
         self._travelled_distance[side] = 2 * np.pi * self._radius * (self._current_ticks[side]
                                             - self._initial_ticks[side]) / self._encoder_resolution
 
-
-    def calculate_wheel_radius(self, empty):
+    def calculate_wheel_radius(self, *args, **kwargs):
         """
         Assuming the robot moved exactly 2 meters since this node was started, compute the wheel radius
         based on the encoder ticks. The robot must moved via joystick or manually forward, never manually backwards.
@@ -94,7 +87,9 @@ class WheelEncoderOdometryNode(DTROS):
         real_distance = 2  # [m]
         r_left = self._encoder_resolution * real_distance / (2 * np.pi * (self._current_ticks["left"] - self._initial_ticks["left"]))
         r_right = self._encoder_resolution * real_distance / (2 * np.pi * (self._current_ticks["right"] - self._initial_ticks["right"]))
-        return 0.5 * (r_left + r_right)
+        self.log(f"left wheel estimated radius: {r_left}")
+        self.log(f"right wheel estimated radius: {r_right}")
+        return TriggerResponse(success=True, message=str(0.5 * (r_left + r_right)))
 
 if __name__ == '__main__':
     node = WheelEncoderOdometryNode(node_name='wheel_encoder_odometry_node')
